@@ -1,6 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -28,6 +29,7 @@ module Distribution.Simple.Command (
   commandParseArgs,
   getNormalCommandDescriptions,
   helpCommandUI,
+  helpAllCommandUI,
 
   -- ** Constructing commands
   ShowOrParseArgs(..),
@@ -225,23 +227,23 @@ commandGetOpts showOrParse command =
     concatMap viewAsGetOpt (commandOptions command showOrParse)
 
 viewAsGetOpt :: OptionField a -> [GetOpt.OptDescr (a -> a)]
-viewAsGetOpt (OptionField _n _isHidden aa) = concatMap optDescrToGetOpt aa
+viewAsGetOpt (OptionField _n isHidden aa) = concatMap optDescrToGetOpt aa
   where
     optDescrToGetOpt (ReqArg d (cs,ss) arg_desc set _) =
-         [GetOpt.Option cs ss (GetOpt.ReqArg (runReadE set) arg_desc) d]
+         [GetOpt.Option cs ss (GetOpt.ReqArg (runReadE set) arg_desc) d isHidden ]
     optDescrToGetOpt (OptArg d (cs,ss) arg_desc set def _) =
-         [GetOpt.Option cs ss (GetOpt.OptArg set' arg_desc) d]
+         [GetOpt.Option cs ss (GetOpt.OptArg set' arg_desc) d isHidden ]
              where set' Nothing    = Right def
                    set' (Just txt) = runReadE set txt
     optDescrToGetOpt (ChoiceOpt alts) =
-         [GetOpt.Option sf lf (GetOpt.NoArg set) d | (d,(sf,lf),set,_) <- alts ]
+         [GetOpt.Option sf lf (GetOpt.NoArg set) d isHidden | (d,(sf,lf),set,_) <- alts ]
     optDescrToGetOpt (BoolOpt d (sfT, lfT) ([],  [])  set _) =
-         [ GetOpt.Option sfT lfT (GetOpt.NoArg (set True))  d ]
+         [ GetOpt.Option sfT lfT (GetOpt.NoArg (set True))  d isHidden]
     optDescrToGetOpt (BoolOpt d ([],  [])  (sfF, lfF) set _) =
-         [ GetOpt.Option sfF lfF (GetOpt.NoArg (set False)) d ]
+         [ GetOpt.Option sfF lfF (GetOpt.NoArg (set False)) d isHidden]
     optDescrToGetOpt (BoolOpt d (sfT,lfT)  (sfF, lfF) set _) =
-         [ GetOpt.Option sfT lfT (GetOpt.NoArg (set True))  ("Enable " ++ d)
-         , GetOpt.Option sfF lfF (GetOpt.NoArg (set False)) ("Disable " ++ d) ]
+         [ GetOpt.Option sfT lfT (GetOpt.NoArg (set True))  ("Enable " ++ d) isHidden
+         , GetOpt.Option sfF lfF (GetOpt.NoArg (set False)) ("Disable " ++ d) isHidden ]
 
 getCurrentChoice :: OptDescr a -> a -> [String]
 getCurrentChoice (ChoiceOpt alts) a =
@@ -314,13 +316,19 @@ commandListOptions command =
                               -- list options output, so use ShowArgs
       commandGetOpts ShowArgs command
   where
-    listOption (GetOpt.Option shortNames longNames _ _) =
-         [ "-"  ++ [name] | name <- shortNames ]
-      ++ [ "--" ++  name  | name <- longNames ]
+    listOption (GetOpt.Option{GetOpt.optDescrShortOptionChars, GetOpt.optDescrLongOptionChars}) =
+         [ "-"  ++ [name] | name <- optDescrShortOptionChars ]
+      ++ [ "--" ++  name  | name <- optDescrLongOptionChars ]
 
 -- | The help text for this command with descriptions of all the options.
 commandHelp :: CommandUI flags -> String -> String
-commandHelp command pname =
+commandHelp = commandHelpGeneric id
+
+commandHelpAll :: CommandUI flags -> String -> String
+commandHelpAll = commandHelpGeneric (\x -> x{GetOpt.optDescrIsHidden=False})
+
+commandHelpGeneric :: ( forall a. GetOpt.OptDescr a -> GetOpt.OptDescr a) -> CommandUI flags -> String -> String
+commandHelpGeneric modOpts command pname =
     commandSynopsis command
  ++ "\n\n"
  ++ commandUsage command pname
@@ -332,7 +340,8 @@ commandHelp command pname =
         then "Global flags:"
         else "Flags for " ++ cname ++ ":" )
  ++ ( GetOpt.usageInfo ""
-    . addCommonFlags ShowArgs
+    $ addCommonFlags ShowArgs
+    $ map modOpts
     $ commandGetOpts ShowArgs command )
  ++ ( case commandNotes command of
         Nothing   -> ""
@@ -372,20 +381,22 @@ mkCommandUI name synopsis usages flags options = CommandUI
   }
 
 -- | Common flags that apply to every command
-data CommonFlag = HelpFlag | ListOptionsFlag
+data CommonFlag = HelpAllFlag | HelpFlag | ListOptionsFlag
 
 commonFlags :: ShowOrParseArgs -> [GetOpt.OptDescr CommonFlag]
 commonFlags showOrParseArgs = case showOrParseArgs of
-  ShowArgs  -> [help]
-  ParseArgs -> [help, list]
+  ShowArgs  -> [help, helpAll]
+  ParseArgs -> [help, helpAll, list]
  where
     help = GetOpt.Option helpShortFlags ["help"] (GetOpt.NoArg HelpFlag)
-             "Show this help text"
+             "Show common help text" False
+    helpAll = GetOpt.Option helpShortFlags ["help-all"] (GetOpt.NoArg HelpAllFlag)
+             "Show all help text" False
     helpShortFlags = case showOrParseArgs of
       ShowArgs  -> ['h']
       ParseArgs -> ['h', '?']
     list = GetOpt.Option [] ["list-options"] (GetOpt.NoArg ListOptionsFlag)
-             "Print a list of command line flags"
+             "Print a list of command line flags" False
 
 addCommonFlags :: ShowOrParseArgs
                -> [GetOpt.OptDescr a]
@@ -407,10 +418,12 @@ commandParseArgs command global args =
             | otherwise = GetOpt.Permute
   in case GetOpt.getOpt' order options args of
     (flags, _, _,  _)
-      | any listFlag flags -> CommandList (commandListOptions command)
-      | any helpFlag flags -> CommandHelp (commandHelp command)
+      | any listFlag flags    -> CommandList (commandListOptions command)
+      | any helpFlag flags    -> CommandHelp (commandHelp command)
+      | any helpAllFlag flags -> CommandHelp (commandHelpAll command)
       where listFlag (Left ListOptionsFlag) = True; listFlag _ = False
             helpFlag (Left HelpFlag)        = True; helpFlag _ = False
+            helpAllFlag (Left HelpAllFlag)  = True; helpAllFlag _ = False
     (flags, opts, opts', [])
       | global || null opts' -> CommandReadyToGo (accum flags, mix opts opts')
       | otherwise            -> CommandErrors (unrecognised opts')
@@ -567,7 +580,7 @@ helpCommandUI :: CommandUI ()
 helpCommandUI =
   (mkCommandUI
     "help"
-    "Help about commands."
+    "Help about most used commands."
     ["[FLAGS]", "COMMAND [FLAGS]"]
     ()
     (const []))
@@ -576,6 +589,21 @@ helpCommandUI =
        "Examples:\n"
     ++ "  " ++ pname ++ " help help\n"
     ++ "    Oh, appararently you already know this.\n"
+  }
+
+helpAllCommandUI :: CommandUI ()
+helpAllCommandUI =
+  (mkCommandUI
+    "help-all"
+    "Help about all commands."
+    ["[FLAGS]", "COMMAND [FLAGS]"]
+    ()
+    (const []))
+  {
+    commandNotes = Just $ \pname ->
+       "Examples:\n"
+    ++ "  " ++ pname ++ " help-all help-all \n"
+    ++ "    Oh, appararently you all already know this.\n"
   }
 
 -- | wraps a @CommandUI@ together with a function that turns it into a @Command@.

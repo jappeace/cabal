@@ -144,7 +144,9 @@ globalCommand commands = CommandUI {
       ++ "Usage: " ++ pname ++ " [GLOBAL FLAGS] [COMMAND [FLAGS]]\n",
     commandDescription  = Just $ \pname ->
       let
-        commands' = commands ++ [commandAddAction helpCommandUI undefined]
+        commands' = commandAddAction helpAllCommandUI undefined
+                  : commandAddAction helpCommandUI undefined
+                  : commands
         cmdDescs = getNormalCommandDescriptions commands'
         -- if new commands are added, we want them to appear even if they
         -- are not included in the custom listing below. Thus, we calculate
@@ -154,6 +156,7 @@ globalCommand commands = CommandUI {
         -- that are actually available.
         otherCmds = deleteFirstsBy (==) (map fst cmdDescs)
           [ "help"
+          , "help-all"
           , "update"
           , "install"
           , "fetch"
@@ -240,6 +243,7 @@ globalCommand commands = CommandUI {
         [ startGroup "global"
         , addCmd "user-config"
         , addCmd "help"
+        , addCmd "help-all"
         , par
         , startGroup "package database"
         , addCmd "update"

@@ -43,14 +43,17 @@ data ArgOrder a
   = RequireOrder                -- ^ no option processing after first non-option
   | Permute                     -- ^ freely intersperse options and non-options
 
-data OptDescr a =              -- description of a single options:
-   Option [Char]                --    list of short option characters
-          [String]              --    list of long option strings (without "--")
-          (ArgDescr a)          --    argument descriptor
-          String                --    explanation of option for user
+-- | description of a single options:
+data OptDescr a =
+   Option { optDescrShortOptionChars   :: [Char]       -- ^ list of short option characters
+          , optDescrLongOptionChars    :: [String]     -- ^ list of long option strings (without "--")
+          , optDescrArgumentDescriptor :: (ArgDescr a) -- ^ argument descriptor
+          , optDescrUserExplenation    :: String       -- ^ explanation of option for user
+          , optDescrIsHidden           :: Bool             -- ^ is hidden for common help. (help-all will still show)
+          }
 
 instance Functor OptDescr where
-    fmap f (Option a b argDescr c) = Option a b (fmap f argDescr) c
+    fmap f (Option a b argDescr c d) = Option a b (fmap f argDescr) c d
 
 -- | Describes whether an option takes an argument or not, and if so
 -- how the argument is parsed to a value of type @a@.
@@ -86,14 +89,20 @@ usageInfo :: String                    -- header
           -> String                    -- nicely formatted description of options
 usageInfo header optDescr = unlines (header : table)
   where
-    options = flip map optDescr $ \(Option sos los ad d) ->
-      OptHelp
-        { optNames =
-          intercalate ", " $
-            map (fmtShort ad) sos ++
-            map (fmtLong  ad) (take 1 los)
-        , optHelp = d
-        }
+    options = optDescr >>= \Option
+        { optDescrShortOptionChars=sos
+        , optDescrLongOptionChars=los
+        , optDescrArgumentDescriptor=ad
+        , optDescrUserExplenation=d
+        , optDescrIsHidden
+        } -> if optDescrIsHidden then [] else pure
+          OptHelp
+            { optNames =
+              intercalate ", " $
+                map (fmtShort ad) sos ++
+                map (fmtLong  ad) (take 1 los)
+            , optHelp = d
+            }
 
     maxOptNameWidth = 30
     descolWidth = 80 - (maxOptNameWidth + 3)
@@ -200,11 +209,11 @@ getNext a            rest _        = (NonOpt a,rest)
 longOpt :: String -> [String] -> [OptDescr a] -> (OptKind a,[String])
 longOpt ls rs optDescr = long ads arg rs
    where (opt,arg) = break (=='=') ls
-         getWith p = [ o  | o@(Option _ xs _ _) <- optDescr
-                          , isJust (find (p opt) xs)]
+         getWith p = [ o  | o@(Option{optDescrLongOptionChars}) <- optDescr
+                          , isJust (find (p opt) optDescrLongOptionChars)]
          exact     = getWith (==)
          options   = if null exact then getWith isPrefixOf else exact
-         ads       = [ ad | Option _ _ ad _ <- options ]
+         ads       = [ optDescrArgumentDescriptor | Option{optDescrArgumentDescriptor} <- options ]
          optStr    = "--" ++ opt
          fromRes   = fromParseResult optStr
 
@@ -221,8 +230,8 @@ longOpt ls rs optDescr = long ads arg rs
 -- handle short option
 shortOpt :: Char -> String -> [String] -> [OptDescr a] -> (OptKind a,[String])
 shortOpt y ys rs optDescr = short ads ys rs
-  where options = [ o  | o@(Option ss _ _ _) <- optDescr, s <- ss, y == s ]
-        ads     = [ ad | Option _ _ ad _ <- options ]
+  where options = [ o  | o@(Option {optDescrShortOptionChars}) <- optDescr, s <- optDescrShortOptionChars, y == s ]
+        ads     = [ optDescrArgumentDescriptor | Option{optDescrArgumentDescriptor} <- options ]
         optStr  = '-':[y]
         fromRes = fromParseResult optStr
 
