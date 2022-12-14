@@ -16,9 +16,9 @@ import Distribution.Deprecated.ParseUtils (FieldDescr (..), runE, syntaxError)
 -- | to view as a FieldDescr, we sort the list of interfaces (Req > Bool >
 -- Choice > Opt) and consider only the first one.
 viewAsFieldDescr :: OptionField a -> FieldDescr a
-viewAsFieldDescr (OptionField _n []) =
+viewAsFieldDescr (OptionField _n _isHidden []) =
   error "Distribution.command.viewAsFieldDescr: unexpected"
-viewAsFieldDescr (OptionField n (d:dd)) = FieldDescr n get set
+viewAsFieldDescr (OptionField n _isHidden (d:dd)) = FieldDescr n get set
 
     where
       optDescr = head $ NE.sortBy cmp (d:|dd)

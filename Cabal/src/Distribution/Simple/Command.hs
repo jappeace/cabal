@@ -109,6 +109,7 @@ type Description = String
 --   build a list of options associated to a configuration data type.
 data OptionField a = OptionField {
   optionName        :: Name,
+  optionIsHidden    :: Bool, -- ^ hide certain options from help.
   optionDescr       :: [OptDescr a] }
 
 -- | An OptionField takes one or more OptDescrs, describing the command line
@@ -136,7 +137,7 @@ type ArgPlaceHolder = String
 --   No explicit Name is given for the Option, the name is the first LFlag given.
 option :: SFlags -> LFlags -> Description -> get -> set -> MkOptDescr get set a
           -> OptionField a
-option sf lf@(n:_) d get set arg = OptionField n [arg sf lf d get set]
+option sf lf@(n:_) d get set arg = OptionField n False [arg sf lf d get set]
 option _ _ _ _ _ _ = error $ "Distribution.command.option: "
                      ++ "An OptionField must have at least one LFlag"
 
@@ -147,7 +148,7 @@ multiOption :: Name -> get -> set
             -> [get -> set -> OptDescr a]  -- ^MkOptDescr constructors partially
                                            -- applied to flags and description.
             -> OptionField a
-multiOption n get set args = OptionField n [arg get set | arg <- args]
+multiOption n get set args = OptionField n False [arg get set | arg <- args]
 
 type MkOptDescr get set a = SFlags -> LFlags -> Description -> get -> set
                             -> OptDescr a
@@ -224,7 +225,7 @@ commandGetOpts showOrParse command =
     concatMap viewAsGetOpt (commandOptions command showOrParse)
 
 viewAsGetOpt :: OptionField a -> [GetOpt.OptDescr (a -> a)]
-viewAsGetOpt (OptionField _n aa) = concatMap optDescrToGetOpt aa
+viewAsGetOpt (OptionField _n _isHidden aa) = concatMap optDescrToGetOpt aa
   where
     optDescrToGetOpt (ReqArg d (cs,ss) arg_desc set _) =
          [GetOpt.Option cs ss (GetOpt.ReqArg (runReadE set) arg_desc) d]
