@@ -487,7 +487,8 @@ commandsRun globalCommand commands args =
     CommandList      opts          -> CommandList (opts ++ commandNames)
     CommandErrors    errs          -> CommandErrors errs
     CommandReadyToGo (mkflags, args') -> case args' of
-      ("help":cmdArgs) -> handleHelpCommand cmdArgs
+      ("help":cmdArgs) -> handleHelpCommand commandHelp cmdArgs
+      ("help-all":cmdArgs) -> handleHelpCommand commandHelpAll cmdArgs
       (name:cmdArgs)   -> case lookupCommand name of
         [Command _ _ action _]
           -> CommandReadyToGo (flags, action cmdArgs)
@@ -520,7 +521,7 @@ commandsRun globalCommand commands args =
 
     -- A bit of a hack: support "prog help" as a synonym of "prog --help"
     -- furthermore, support "prog help command" as "prog command --help"
-    handleHelpCommand cmdArgs =
+    handleHelpCommand helpCommand cmdArgs =
       case commandParseArgs helpCommandUI True cmdArgs of
         CommandHelp      help    -> CommandHelp help
         CommandList      list    -> CommandList (list ++ commandNames)
@@ -535,7 +536,7 @@ commandsRun globalCommand commands args =
                 _                -> CommandHelp globalHelp
             _                    -> badCommand name
 
-     where globalHelp = commandHelp globalCommand
+     where globalHelp = helpCommand globalCommand
 
 -- Levenshtein distance, from https://wiki.haskell.org/Edit_distance
 -- (Author: JeanPhilippeBernardy, Simple Permissive Licence)
