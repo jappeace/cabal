@@ -36,6 +36,7 @@ nixStyleOptions
     :: (ShowOrParseArgs -> [OptionField a])
     -> ShowOrParseArgs -> [OptionField (NixStyleFlags a)]
 nixStyleOptions commandOptions showOrParseArgs =
+  map (\x -> x{optionIsHidden = True }) $
         liftOptions configFlags     set1
         -- Note: [Hidden Flags]
         -- hide "constraint", "dependency", and
