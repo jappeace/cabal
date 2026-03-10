@@ -1,0 +1,4 @@
+signature FilledSig where
+
+data Connection
+connectionName :: String

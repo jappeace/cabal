@@ -1,0 +1,24 @@
+name:                Fail4
+version:             0.1.0.0
+license:             BSD3
+author:              Edward Z. Yang
+maintainer:          ezyang@cs.stanford.edu
+build-type:          Simple
+cabal-version:       2.0
+
+library sig-lib
+  signatures:          FilledSig, UnfilledSig
+  build-depends:       base
+  hs-source-dirs:      sig
+  default-language:    Haskell2010
+
+library impl-lib
+  exposed-modules:     FilledSig
+  build-depends:       base
+  hs-source-dirs:      impl
+  default-language:    Haskell2010
+
+executable foo
+  build-depends:       base, sig-lib, impl-lib
+  main-is: Main.hs
+  default-language:    Haskell2010

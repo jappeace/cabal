@@ -1,0 +1,4 @@
+signature UnfilledSig where
+
+data Database
+databaseName :: String

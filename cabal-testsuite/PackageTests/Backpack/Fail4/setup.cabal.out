@@ -1,0 +1,9 @@
+# Setup configure
+Configuring Fail4-0.1.0.0...
+Error:
+    Non-library component has unfilled requirements:
+        UnfilledSig brought into scope by build-depends: Fail4:sig-lib
+                signature declarations:
+                    data Database
+                    databaseName :: String
+    In the stanza executable foo
