@@ -40,7 +40,7 @@ import Distribution.Verbosity
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Distribution.Pretty (pretty)
-import Text.PrettyPrint (Doc, hang, hsep, quotes, text, vcat, ($+$))
+import Text.PrettyPrint (Doc, hang, hsep, quotes, text, vcat, ($+$), (<+>))
 
 -- | A linked component is a component that has been mix-in linked, at
 -- which point we have determined how all the dependencies of the
@@ -258,7 +258,14 @@ toLinkedComponent
         hang
           (text "Non-library component has unfilled requirements:")
           4
-          (vcat [pretty req | req <- Set.toList reqs])
+          (vcat
+            [ case Map.lookup req (modScopeRequires linked_shape0) of
+                Just (src : _) ->
+                  hang (pretty req) 4
+                    (text "brought into scope by" <+> dispModuleSource (getSource src))
+                _ -> pretty req
+            | req <- Set.toList reqs
+            ])
 
     -- NB: do NOT include hidden modules here: GHC 7.10's ghc-pkg
     -- won't allow it (since someone could directly synthesize
