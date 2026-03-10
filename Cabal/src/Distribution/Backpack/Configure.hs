@@ -23,6 +23,7 @@ import Distribution.Backpack.FullUnitId
 import Distribution.Backpack.Id
 import Distribution.Backpack.LinkedComponent
 import Distribution.Backpack.PreExistingComponent
+import Distribution.Backpack.PreReadHsig (HsigDecls)
 import Distribution.Backpack.ReadyComponent
 
 import Distribution.Backpack.ModuleShape
@@ -73,6 +74,7 @@ configureComponentLocalBuildInfos
   -> [(ModuleName, Module)] -- configInstantiateWith
   -> InstalledPackageIndex
   -> Compiler
+  -> HsigDecls
   -> LogProgress ([ComponentLocalBuildInfo], InstalledPackageIndex)
 configureComponentLocalBuildInfos
   verbosity
@@ -86,7 +88,8 @@ configureComponentLocalBuildInfos
   flags
   instantiate_with
   installedPackageSet
-  comp = do
+  comp
+  hsig_decls = do
     -- NB: In single component mode, this returns a *single* component.
     -- In this graph, the graph is NOT closed.
     graph0 <- case mkComponentsGraph enabled pkg_descr of
@@ -168,6 +171,7 @@ configureComponentLocalBuildInfos
         uid_lookup
         (package pkg_descr)
         shape_pkg_map
+        hsig_decls
         graph1
 
     infoProgress $

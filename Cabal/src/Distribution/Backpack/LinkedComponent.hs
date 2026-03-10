@@ -25,6 +25,7 @@ import Distribution.Backpack.MixLink
 import Distribution.Backpack.ModuleScope
 import Distribution.Backpack.ModuleShape
 import Distribution.Backpack.PreModuleShape
+import Distribution.Backpack.PreReadHsig (HsigDecls)
 import Distribution.Backpack.UnifyM
 import Distribution.Utils.MapAccum
 
@@ -40,7 +41,7 @@ import Distribution.Verbosity
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Distribution.Pretty (pretty)
-import Text.PrettyPrint (Doc, hang, hsep, quotes, text, vcat, ($+$))
+import Text.PrettyPrint (Doc, hang, hsep, nest, quotes, text, vcat, ($+$), (<+>))
 
 -- | A linked component is a component that has been mix-in linked, at
 -- which point we have determined how all the dependencies of the
@@ -118,6 +119,7 @@ toLinkedComponent
   -> FullDb
   -> PackageId
   -> LinkedComponentMap
+  -> HsigDecls
   -> ConfiguredComponent
   -> LogProgress LinkedComponent
 toLinkedComponent
@@ -126,6 +128,7 @@ toLinkedComponent
   db
   this_pid
   pkg_map
+  hsig_decls
   ConfiguredComponent
     { cc_ann_id = aid@AnnotatedId{ann_id = this_cid}
     , cc_component = component
@@ -258,7 +261,20 @@ toLinkedComponent
         hang
           (text "Non-library component has unfilled requirements:")
           4
-          (vcat [pretty req | req <- Set.toList reqs])
+          (vcat
+            [ let provDoc = case Map.lookup req (modScopeRequires linked_shape0) of
+                    Just (src : _) ->
+                      hang (pretty req) 4
+                        (text "brought into scope by" <+> dispModuleSource (getSource src))
+                    _ -> pretty req
+                  declsDoc = case Map.lookup req hsig_decls of
+                    Just decls@(_ : _) ->
+                      hang (text "signature declarations:") 4
+                        (vcat (map text decls))
+                    _ -> mempty
+              in provDoc $+$ nest 8 declsDoc
+            | req <- Set.toList reqs
+            ])
 
     -- NB: do NOT include hidden modules here: GHC 7.10's ghc-pkg
     -- won't allow it (since someone could directly synthesize
@@ -410,9 +426,10 @@ toLinkedComponents
   -> FullDb
   -> PackageId
   -> LinkedComponentMap
+  -> HsigDecls
   -> [ConfiguredComponent]
   -> LogProgress [LinkedComponent]
-toLinkedComponents verbosity anyPromised db this_pid lc_map0 comps =
+toLinkedComponents verbosity anyPromised db this_pid lc_map0 hsig_decls comps =
   fmap snd (mapAccumM go lc_map0 comps)
   where
     go
@@ -422,7 +439,7 @@ toLinkedComponents verbosity anyPromised db this_pid lc_map0 comps =
     go lc_map cc = do
       lc <-
         addProgressCtx (text "In the stanza" <+> text (componentNameStanza (cc_name cc))) $
-          toLinkedComponent verbosity anyPromised db this_pid lc_map cc
+          toLinkedComponent verbosity anyPromised db this_pid lc_map hsig_decls cc
       return (extendLinkedComponentMap lc lc_map, lc)
 
 type LinkedComponentMap = Map ComponentId (OpenUnitId, ModuleShape)
