@@ -23,7 +23,6 @@ import Distribution.Backpack.FullUnitId
 import Distribution.Backpack.Id
 import Distribution.Backpack.LinkedComponent
 import Distribution.Backpack.PreExistingComponent
-import Distribution.Backpack.PreReadHsig (HsigDecls, ModuleDefinedNames)
 import Distribution.Backpack.ReadyComponent
 
 import Distribution.Backpack.ModuleShape
@@ -74,8 +73,10 @@ configureComponentLocalBuildInfos
   -> [(ModuleName, Module)] -- configInstantiateWith
   -> InstalledPackageIndex
   -> Compiler
-  -> HsigDecls
-  -> ModuleDefinedNames
+  -> Map ModuleName [String]
+  -- ^ Declarations from @.hsig@ files for error messages
+  -> Map ModuleName (Set.Set String)
+  -- ^ Defined names from @.hs@ files for error messages
   -> LogProgress ([ComponentLocalBuildInfo], InstalledPackageIndex)
 configureComponentLocalBuildInfos
   verbosity

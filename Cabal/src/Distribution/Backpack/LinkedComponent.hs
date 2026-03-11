@@ -25,7 +25,6 @@ import Distribution.Backpack.MixLink
 import Distribution.Backpack.ModuleScope
 import Distribution.Backpack.ModuleShape
 import Distribution.Backpack.PreModuleShape
-import Distribution.Backpack.PreReadHsig (extractDeclName)
 import Distribution.Backpack.UnifyM
 import Distribution.Utils.MapAccum
 
@@ -490,6 +489,15 @@ extendLinkedComponentMap
   -> LinkedComponentMap
 extendLinkedComponentMap lc m =
   Map.insert (lc_cid lc) (lc_uid lc, lc_shape lc) m
+
+-- | Extract the declared name from a single @.hsig@ declaration line.
+extractDeclName :: String -> Maybe String
+extractDeclName line =
+  case words line of
+    (kw : name : _)
+      | kw `elem` ["data", "type", "newtype", "class"] -> Just name
+    (name : "::" : _) -> Just name
+    _ -> Nothing
 
 brokenReexportMsg :: ModuleReexport -> Doc
 brokenReexportMsg (ModuleReexport (Just pn) from _to) =
