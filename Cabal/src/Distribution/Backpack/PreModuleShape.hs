@@ -25,7 +25,7 @@ data PreModuleShape = PreModuleShape
   deriving (Eq, Show, Generic)
 
 toPreModuleShape :: ModuleShape -> PreModuleShape
-toPreModuleShape (ModuleShape provs reqs) = PreModuleShape (Map.keysSet provs) reqs
+toPreModuleShape shape = PreModuleShape (Map.keysSet (modShapeProvides shape)) (modShapeRequires shape)
 
 renamePreModuleShape :: PreModuleShape -> IncludeRenaming -> PreModuleShape
 renamePreModuleShape (PreModuleShape provs reqs) (IncludeRenaming prov_rn req_rn) =

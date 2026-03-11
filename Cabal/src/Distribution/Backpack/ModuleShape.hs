@@ -17,7 +17,9 @@ import Distribution.ModuleName
 import Distribution.Backpack
 import Distribution.Backpack.ModSubst
 
+import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Set (Set)
 import qualified Data.Set as Set
 
 -----------------------------------------------------------------------
@@ -29,6 +31,12 @@ import qualified Data.Set as Set
 data ModuleShape = ModuleShape
   { modShapeProvides :: OpenModuleSubst
   , modShapeRequires :: Set ModuleName
+  , modShapeRequiresDecls :: Map ModuleName [String]
+  -- ^ Declarations from @.hsig@ files for each required signature.
+  -- Informational only, used for error messages.
+  , modShapeDefinedNames :: Map ModuleName (Set String)
+  -- ^ Top-level defined names from @.hs@ files that fill signatures.
+  -- Informational only, used for error messages.
   }
   deriving (Eq, Show, Generic)
 
@@ -36,12 +44,12 @@ instance Binary ModuleShape
 instance Structured ModuleShape
 
 instance ModSubst ModuleShape where
-  modSubst subst (ModuleShape provs reqs) =
-    ModuleShape (modSubst subst provs) (modSubst subst reqs)
+  modSubst subst (ModuleShape provs reqs reqDecls defNames) =
+    ModuleShape (modSubst subst provs) (modSubst subst reqs) reqDecls defNames
 
 -- | The default module shape, with no provisions and no requirements.
 emptyModuleShape :: ModuleShape
-emptyModuleShape = ModuleShape Map.empty Set.empty
+emptyModuleShape = ModuleShape Map.empty Set.empty Map.empty Map.empty
 
 -- Food for thought: suppose we apply the Merkel tree optimization.
 -- Imagine this situation:
@@ -73,7 +81,7 @@ emptyModuleShape = ModuleShape Map.empty Set.empty
 -- soon as it sees an improved one in the package database.  This
 -- is a bit disgusting.
 shapeInstalledPackage :: IPI.InstalledPackageInfo -> ModuleShape
-shapeInstalledPackage ipi = ModuleShape (Map.fromList provs) reqs
+shapeInstalledPackage ipi = ModuleShape (Map.fromList provs) reqs Map.empty Map.empty
   where
     uid = installedOpenUnitId ipi
     provs = map shapeExposedModule (IPI.exposedModules ipi)

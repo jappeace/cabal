@@ -25,7 +25,7 @@ import Distribution.Backpack.MixLink
 import Distribution.Backpack.ModuleScope
 import Distribution.Backpack.ModuleShape
 import Distribution.Backpack.PreModuleShape
-import Distribution.Backpack.PreReadHsig (HsigDecls, ModuleDefinedNames, extractDeclName)
+import Distribution.Backpack.PreReadHsig (extractDeclName)
 import Distribution.Backpack.UnifyM
 import Distribution.Utils.MapAccum
 
@@ -41,7 +41,7 @@ import Distribution.Verbosity
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Distribution.Pretty (pretty)
-import Text.PrettyPrint (Doc, hang, hsep, nest, quotes, text, vcat, ($+$), (<+>))
+import Text.PrettyPrint (Doc, hang, hsep, nest, quotes, text, vcat, ($+$))
 
 -- | A linked component is a component that has been mix-in linked, at
 -- which point we have determined how all the dependencies of the
@@ -119,8 +119,6 @@ toLinkedComponent
   -> FullDb
   -> PackageId
   -> LinkedComponentMap
-  -> HsigDecls
-  -> ModuleDefinedNames
   -> ConfiguredComponent
   -> LogProgress LinkedComponent
 toLinkedComponent
@@ -129,14 +127,14 @@ toLinkedComponent
   db
   this_pid
   pkg_map
-  hsig_decls
-  module_defined_names
   ConfiguredComponent
     { cc_ann_id = aid@AnnotatedId{ann_id = this_cid}
     , cc_component = component
     , cc_exe_deps = exe_deps
     , cc_public = is_public
     , cc_includes = cid_includes
+    , cc_hsig_decls = cc_hsig_decls_local
+    , cc_defined_names = cc_defined_names_local
     } = do
     let
       -- The explicitly specified requirements, provisions and
@@ -167,6 +165,19 @@ toLinkedComponent
       lookupUid :: ComponentId -> (OpenUnitId, ModuleShape)
       lookupUid cid =
         Map.findWithDefault (error "linkComponent: lookupUid") cid pkg_map
+
+      -- Combine hsig declarations and defined names from the component
+      -- itself and from dependency shapes.
+      dep_shapes :: [ModuleShape]
+      dep_shapes = [sh | (_, sh) <- Map.elems pkg_map]
+
+      hsig_decls :: Map.Map ModuleName [String]
+      hsig_decls = Map.unions
+        (cc_hsig_decls_local : map modShapeRequiresDecls dep_shapes)
+
+      module_defined_names :: Map.Map ModuleName (Set.Set String)
+      module_defined_names = Map.unionsWith Set.union
+        (cc_defined_names_local : map modShapeDefinedNames dep_shapes)
 
     let orErr (Right x) = return x
         orErr (Left [err]) = dieProgress err
@@ -404,7 +415,7 @@ toLinkedComponent
           | (mod_name, Nothing) <- reexports_list
           ]
 
-    let final_linked_shape = ModuleShape provs (Map.keysSet (modScopeRequires linked_shape))
+    let final_linked_shape = ModuleShape provs (Map.keysSet (modScopeRequires linked_shape)) hsig_decls module_defined_names
 
     -- See Note Note [Signature package special case]
     let (linked_includes, linked_sig_includes)
@@ -456,11 +467,9 @@ toLinkedComponents
   -> FullDb
   -> PackageId
   -> LinkedComponentMap
-  -> HsigDecls
-  -> ModuleDefinedNames
   -> [ConfiguredComponent]
   -> LogProgress [LinkedComponent]
-toLinkedComponents verbosity anyPromised db this_pid lc_map0 hsig_decls module_defined_names comps =
+toLinkedComponents verbosity anyPromised db this_pid lc_map0 comps =
   fmap snd (mapAccumM go lc_map0 comps)
   where
     go
@@ -470,7 +479,7 @@ toLinkedComponents verbosity anyPromised db this_pid lc_map0 hsig_decls module_d
     go lc_map cc = do
       lc <-
         addProgressCtx (text "In the stanza" <+> text (componentNameStanza (cc_name cc))) $
-          toLinkedComponent verbosity anyPromised db this_pid lc_map hsig_decls module_defined_names cc
+          toLinkedComponent verbosity anyPromised db this_pid lc_map cc
       return (extendLinkedComponentMap lc lc_map, lc)
 
 type LinkedComponentMap = Map ComponentId (OpenUnitId, ModuleShape)

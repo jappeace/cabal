@@ -135,11 +135,14 @@ configureComponentLocalBuildInfos
         pkg_descr
         conf_pkg_map
         (map fst graph0)
+    let graph1' = map (\cc -> cc { cc_hsig_decls = hsig_decls
+                                   , cc_defined_names = module_defined_names }) graph1
+
     infoProgress $
       hang
         (text "Configured component graph:")
         4
-        (vcat (map dispConfiguredComponent graph1))
+        (vcat (map dispConfiguredComponent graph1'))
 
     let shape_pkg_map =
           Map.fromList
@@ -173,9 +176,7 @@ configureComponentLocalBuildInfos
         uid_lookup
         (package pkg_descr)
         shape_pkg_map
-        hsig_decls
-        module_defined_names
-        graph1
+        graph1'
 
     infoProgress $
       hang
