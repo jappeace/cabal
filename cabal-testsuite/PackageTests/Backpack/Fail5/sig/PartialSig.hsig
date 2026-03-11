@@ -1,0 +1,3 @@
+signature PartialSig where
+data A
+fun :: A -> A

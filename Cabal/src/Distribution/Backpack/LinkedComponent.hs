@@ -25,7 +25,7 @@ import Distribution.Backpack.MixLink
 import Distribution.Backpack.ModuleScope
 import Distribution.Backpack.ModuleShape
 import Distribution.Backpack.PreModuleShape
-import Distribution.Backpack.PreReadHsig (HsigDecls)
+import Distribution.Backpack.PreReadHsig (HsigDecls, ModuleDefinedNames, extractDeclName)
 import Distribution.Backpack.UnifyM
 import Distribution.Utils.MapAccum
 
@@ -120,6 +120,7 @@ toLinkedComponent
   -> PackageId
   -> LinkedComponentMap
   -> HsigDecls
+  -> ModuleDefinedNames
   -> ConfiguredComponent
   -> LogProgress LinkedComponent
 toLinkedComponent
@@ -129,6 +130,7 @@ toLinkedComponent
   this_pid
   pkg_map
   hsig_decls
+  module_defined_names
   ConfiguredComponent
     { cc_ann_id = aid@AnnotatedId{ann_id = this_cid}
     , cc_component = component
@@ -178,8 +180,7 @@ toLinkedComponent
             )
 
     -- Pre-shaping
-    let pre_shape =
-          mixLinkPreModuleShape $
+    let pre_shapes =
             PreModuleShape
               { preModShapeProvides = Set.fromList (src_provs ++ src_hidden)
               , preModShapeRequires = Set.fromList src_reqs
@@ -187,6 +188,8 @@ toLinkedComponent
               : [ renamePreModuleShape (toPreModuleShape sh) rns
                 | ComponentInclude (AnnotatedId{ann_id = (_, sh)}) rns _ <- unlinked_includes
                 ]
+        pre_shape = mixLinkPreModuleShape pre_shapes
+        all_reqs = Set.unions (map preModShapeRequires pre_shapes)
         reqs = preModShapeRequires pre_shape
         insts =
           [ (req, OpenModuleVar req)
@@ -275,6 +278,33 @@ toLinkedComponent
               in provDoc $+$ nest 8 declsDoc
             | req <- Set.toList reqs
             ])
+
+    -- Check for partially-implemented signatures: a module fills a
+    -- signature by name but is missing some declarations.
+    let filled_reqs = Set.difference all_reqs reqs
+    for_ (Set.toList filled_reqs) $ \req ->
+      case (Map.lookup req hsig_decls, Map.lookup req module_defined_names) of
+        (Just decls@(_ : _), Just definedNames) ->
+          let -- For each hsig declaration, extract the declared name
+              missing_decls =
+                [ decl
+                | decl <- decls
+                , case extractDeclName decl of
+                    Just name -> not (Set.member name definedNames)
+                    Nothing -> False
+                ]
+           in case missing_decls of
+                [] -> return ()
+                _ ->
+                  dieProgress $
+                    hang
+                      (text "Module" <+> pretty req <+> text "partially implements signature" <+> pretty req `mappend` text ":")
+                      4
+                      ( hang (text "missing declarations from signature:")
+                          4
+                          (vcat (map text missing_decls))
+                      )
+        _ -> return ()
 
     -- NB: do NOT include hidden modules here: GHC 7.10's ghc-pkg
     -- won't allow it (since someone could directly synthesize
@@ -427,9 +457,10 @@ toLinkedComponents
   -> PackageId
   -> LinkedComponentMap
   -> HsigDecls
+  -> ModuleDefinedNames
   -> [ConfiguredComponent]
   -> LogProgress [LinkedComponent]
-toLinkedComponents verbosity anyPromised db this_pid lc_map0 hsig_decls comps =
+toLinkedComponents verbosity anyPromised db this_pid lc_map0 hsig_decls module_defined_names comps =
   fmap snd (mapAccumM go lc_map0 comps)
   where
     go
@@ -439,7 +470,7 @@ toLinkedComponents verbosity anyPromised db this_pid lc_map0 hsig_decls comps =
     go lc_map cc = do
       lc <-
         addProgressCtx (text "In the stanza" <+> text (componentNameStanza (cc_name cc))) $
-          toLinkedComponent verbosity anyPromised db this_pid lc_map hsig_decls cc
+          toLinkedComponent verbosity anyPromised db this_pid lc_map hsig_decls module_defined_names cc
       return (extendLinkedComponentMap lc lc_map, lc)
 
 type LinkedComponentMap = Map ComponentId (OpenUnitId, ModuleShape)

@@ -71,7 +71,7 @@ import Distribution.Backpack.ConfiguredComponent (newPackageDepsBehaviour)
 import Distribution.Backpack.DescribeUnitId
 import Distribution.Backpack.Id
 import Distribution.Backpack.PreExistingComponent
-import Distribution.Backpack.PreReadHsig (readHsigDecls)
+import Distribution.Backpack.PreReadHsig (readHsigDecls, readModuleDefinedNames)
 import qualified Distribution.Compat.Graph as Graph
 import Distribution.Compat.Stack
 import Distribution.Compiler
@@ -1255,6 +1255,7 @@ configureComponents
       -- components, which lets us actually build each component.
       let mbWorkDir = flagToMaybe $ configWorkingDir cfg
       hsigDecls <- readHsigDecls mbWorkDir pkg_descr
+      moduleDefinedNames <- readModuleDefinedNames mbWorkDir pkg_descr (Map.keysSet hsigDecls)
       ( buildComponents :: [ComponentLocalBuildInfo]
         , packageDependsIndex :: InstalledPackageIndex
         ) <-
@@ -1273,6 +1274,7 @@ configureComponents
             installedPackageSet
             comp
             hsigDecls
+            moduleDefinedNames
 
       let buildComponentsMap =
             foldl'
