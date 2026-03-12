@@ -475,7 +475,7 @@ convertInclude
   ci@( ComponentInclude
         { ci_ann_id =
           AnnotatedId
-            { ann_id = (uid, ModuleShape provs reqs)
+            { ann_id = (uid, shape)
             , ann_pid = pid
             , ann_cname = compname
             }
@@ -483,6 +483,8 @@ convertInclude
         , ci_implicit = implicit
         }
       ) = addErrContext (text "In" <+> ci_msg ci) $ do
+    let provs = modShapeProvides shape
+        reqs = modShapeRequires shape
     let pn = packageName pid
         the_source
           | implicit =

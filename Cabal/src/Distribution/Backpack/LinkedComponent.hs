@@ -40,7 +40,7 @@ import Distribution.Verbosity
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Distribution.Pretty (pretty)
-import Text.PrettyPrint (Doc, hang, hsep, quotes, text, vcat, ($+$))
+import Text.PrettyPrint (Doc, hang, hsep, nest, quotes, text, vcat, ($+$))
 
 -- | A linked component is a component that has been mix-in linked, at
 -- which point we have determined how all the dependencies of the
@@ -132,6 +132,7 @@ toLinkedComponent
     , cc_exe_deps = exe_deps
     , cc_public = is_public
     , cc_includes = cid_includes
+    , cc_hsig_decls = cc_hsig_decls_local
     } = do
     let
       -- The explicitly specified requirements, provisions and
@@ -163,6 +164,15 @@ toLinkedComponent
       lookupUid cid =
         Map.findWithDefault (error "linkComponent: lookupUid") cid pkg_map
 
+      -- Combine hsig declarations and defined names from the component
+      -- itself and from dependency shapes.
+      dep_shapes :: [ModuleShape]
+      dep_shapes = [sh | (_, sh) <- Map.elems pkg_map]
+
+      hsig_decls :: Map.Map ModuleName [String]
+      hsig_decls = Map.unions
+        (cc_hsig_decls_local : map modShapeRequiresDecls dep_shapes)
+
     let orErr (Right x) = return x
         orErr (Left [err]) = dieProgress err
         orErr (Left errs) = do
@@ -175,8 +185,7 @@ toLinkedComponent
             )
 
     -- Pre-shaping
-    let pre_shape =
-          mixLinkPreModuleShape $
+    let pre_shapes =
             PreModuleShape
               { preModShapeProvides = Set.fromList (src_provs ++ src_hidden)
               , preModShapeRequires = Set.fromList src_reqs
@@ -184,6 +193,7 @@ toLinkedComponent
               : [ renamePreModuleShape (toPreModuleShape sh) rns
                 | ComponentInclude (AnnotatedId{ann_id = (_, sh)}) rns _ <- unlinked_includes
                 ]
+        pre_shape = mixLinkPreModuleShape pre_shapes
         reqs = preModShapeRequires pre_shape
         insts =
           [ (req, OpenModuleVar req)
@@ -258,7 +268,20 @@ toLinkedComponent
         hang
           (text "Non-library component has unfilled requirements:")
           4
-          (vcat [pretty req | req <- Set.toList reqs])
+          (vcat
+            [ let provDoc = case Map.lookup req (modScopeRequires linked_shape0) of
+                    Just (src : _) ->
+                      hang (pretty req) 4
+                        (text "brought into scope by" <+> dispModuleSource (getSource src))
+                    _ -> pretty req
+                  declsDoc = case Map.lookup req hsig_decls of
+                    Just decls@(_ : _) ->
+                      hang (text "signature declarations:") 4
+                        (vcat (map text decls))
+                    _ -> mempty
+              in provDoc $+$ nest 8 declsDoc
+            | req <- Set.toList reqs
+            ])
 
     -- NB: do NOT include hidden modules here: GHC 7.10's ghc-pkg
     -- won't allow it (since someone could directly synthesize
@@ -358,7 +381,7 @@ toLinkedComponent
           | (mod_name, Nothing) <- reexports_list
           ]
 
-    let final_linked_shape = ModuleShape provs (Map.keysSet (modScopeRequires linked_shape))
+    let final_linked_shape = ModuleShape provs (Map.keysSet (modScopeRequires linked_shape)) hsig_decls
 
     -- See Note Note [Signature package special case]
     let (linked_includes, linked_sig_includes)

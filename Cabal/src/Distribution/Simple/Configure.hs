@@ -71,6 +71,7 @@ import Distribution.Backpack.ConfiguredComponent (newPackageDepsBehaviour)
 import Distribution.Backpack.DescribeUnitId
 import Distribution.Backpack.Id
 import Distribution.Backpack.PreExistingComponent
+import qualified Distribution.ModuleName as ModuleName
 import qualified Distribution.Compat.Graph as Graph
 import Distribution.Compat.Stack
 import Distribution.Compiler
@@ -1252,6 +1253,8 @@ configureComponents
       -- components (which may build-depends on each other) and form a graph.
       -- From there, we build a ComponentLocalBuildInfo for each of the
       -- components, which lets us actually build each component.
+      let mbWorkDir = flagToMaybe $ configWorkingDir cfg
+      hsigDecls <- readHsigDecls mbWorkDir pkg_descr
       ( buildComponents :: [ComponentLocalBuildInfo]
         , packageDependsIndex :: InstalledPackageIndex
         ) <-
@@ -1269,6 +1272,7 @@ configureComponents
             (configInstantiateWith cfg)
             installedPackageSet
             comp
+            hsigDecls
 
       let buildComponentsMap =
             foldl'
@@ -2992,3 +2996,68 @@ checkForeignLibSupported comp platform flib = go (compilerFlavor comp)
 
     unsupported :: [String] -> Maybe String
     unsupported = Just . concat
+
+------------------------------------------------------------------------------
+-- Pre-reading .hsig and .hs files for Backpack error messages
+------------------------------------------------------------------------------
+
+-- | Pre-read all @.hsig@ files referenced by the package's library
+-- signatures, extracting their declarations for use in error messages.
+readHsigDecls
+  :: Maybe (SymbolicPath CWD (Dir Pkg))
+  -> PackageDescription
+  -> IO (Map.Map ModuleName.ModuleName [String])
+readHsigDecls mbWorkDir pkg_descr = do
+  entries <- concat <$> traverse (readLibHsigDecls mbWorkDir) (allLibraries pkg_descr)
+  return (Map.fromList entries)
+
+readLibHsigDecls
+  :: Maybe (SymbolicPath CWD (Dir Pkg))
+  -> Library
+  -> IO [(ModuleName.ModuleName, [String])]
+readLibHsigDecls mbWorkDir lib = do
+  let srcDirs = hsSourceDirs (libBuildInfo lib)
+      sigs = signatures lib
+  catMaybes <$> traverse (findAndReadHsig mbWorkDir srcDirs) sigs
+
+findAndReadHsig
+  :: Maybe (SymbolicPath CWD (Dir Pkg))
+  -> [SymbolicPath Pkg (Dir Source)]
+  -> ModuleName.ModuleName
+  -> IO (Maybe (ModuleName.ModuleName, [String]))
+findAndReadHsig mbWorkDir srcDirs modName = do
+  let candidates =
+        [ (dir, ext)
+        | dir <- if null srcDirs then ["."] else map getSymbolicPath srcDirs
+        , ext <- [".hsig", ".lhsig"]
+        ]
+  go candidates
+  where
+    go [] = return Nothing
+    go ((dir, ext) : rest) = do
+      let relPath = dir ++ "/" ++ ModuleName.toFilePath modName ++ ext
+          fullPath = case mbWorkDir of
+            Nothing -> relPath
+            Just wd -> getSymbolicPath wd ++ "/" ++ relPath
+      exists <- doesFileExist fullPath
+      if exists
+        then do
+          contents <- readFile fullPath
+          let decls = extractDeclarations contents
+          return (Just (modName, decls))
+        else go rest
+
+-- | Extract declaration lines from the contents of a @.hsig@ file.
+extractDeclarations :: String -> [String]
+extractDeclarations contents =
+  let ls = lines contents
+      afterWhere = case break (elem "where" . words) ls of
+        (_, []) -> []
+        (_, (_ : rest)) -> rest
+      isKeepable line =
+        let stripped = dropWhile (== ' ') line
+         in not (null stripped)
+              && not ("{-#" `isPrefixOf` stripped)
+              && not ("import " `isPrefixOf` stripped)
+              && not ("--" `isPrefixOf` stripped)
+   in map (dropWhile (== ' ')) (filter isKeepable afterWhere)
