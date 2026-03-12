@@ -75,8 +75,6 @@ configureComponentLocalBuildInfos
   -> Compiler
   -> Map ModuleName [String]
   -- ^ Declarations from @.hsig@ files for error messages
-  -> Map ModuleName (Set.Set String)
-  -- ^ Defined names from @.hs@ files for error messages
   -> LogProgress ([ComponentLocalBuildInfo], InstalledPackageIndex)
 configureComponentLocalBuildInfos
   verbosity
@@ -91,8 +89,7 @@ configureComponentLocalBuildInfos
   instantiate_with
   installedPackageSet
   comp
-  hsig_decls
-  module_defined_names = do
+  hsig_decls = do
     -- NB: In single component mode, this returns a *single* component.
     -- In this graph, the graph is NOT closed.
     graph0 <- case mkComponentsGraph enabled pkg_descr of
@@ -136,8 +133,7 @@ configureComponentLocalBuildInfos
         pkg_descr
         conf_pkg_map
         (map fst graph0)
-    let graph1' = map (\cc -> cc { cc_hsig_decls = hsig_decls
-                                   , cc_defined_names = module_defined_names }) graph1
+    let graph1' = map (\cc -> cc { cc_hsig_decls = hsig_decls }) graph1
 
     infoProgress $
       hang

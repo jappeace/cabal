@@ -64,9 +64,6 @@ data ConfiguredComponent = ConfiguredComponent
   , cc_hsig_decls :: Map.Map ModuleName [String]
   -- ^ Declarations from @.hsig@ files for required signatures.
   -- Used for error messages.
-  , cc_defined_names :: Map.Map ModuleName (Set.Set String)
-  -- ^ Top-level defined names from @.hs@ files that fill signatures.
-  -- Used for error messages.
   }
 
 -- | Uniquely identifies a configured component.
@@ -154,7 +151,6 @@ mkConfiguredComponent pkg_descr this_cid lib_deps exe_deps component = do
       , cc_exe_deps = exe_deps
       , cc_includes = explicit_includes ++ implicit_includes
       , cc_hsig_decls = Map.empty
-      , cc_defined_names = Map.empty
       }
   where
     bi :: BuildInfo

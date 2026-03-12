@@ -133,7 +133,6 @@ toLinkedComponent
     , cc_public = is_public
     , cc_includes = cid_includes
     , cc_hsig_decls = cc_hsig_decls_local
-    , cc_defined_names = cc_defined_names_local
     } = do
     let
       -- The explicitly specified requirements, provisions and
@@ -174,10 +173,6 @@ toLinkedComponent
       hsig_decls = Map.unions
         (cc_hsig_decls_local : map modShapeRequiresDecls dep_shapes)
 
-      module_defined_names :: Map.Map ModuleName (Set.Set String)
-      module_defined_names = Map.unionsWith Set.union
-        (cc_defined_names_local : map modShapeDefinedNames dep_shapes)
-
     let orErr (Right x) = return x
         orErr (Left [err]) = dieProgress err
         orErr (Left errs) = do
@@ -199,7 +194,6 @@ toLinkedComponent
                 | ComponentInclude (AnnotatedId{ann_id = (_, sh)}) rns _ <- unlinked_includes
                 ]
         pre_shape = mixLinkPreModuleShape pre_shapes
-        all_reqs = Set.unions (map preModShapeRequires pre_shapes)
         reqs = preModShapeRequires pre_shape
         insts =
           [ (req, OpenModuleVar req)
@@ -288,33 +282,6 @@ toLinkedComponent
               in provDoc $+$ nest 8 declsDoc
             | req <- Set.toList reqs
             ])
-
-    -- Check for partially-implemented signatures: a module fills a
-    -- signature by name but is missing some declarations.
-    let filled_reqs = Set.difference all_reqs reqs
-    for_ (Set.toList filled_reqs) $ \req ->
-      case (Map.lookup req hsig_decls, Map.lookup req module_defined_names) of
-        (Just decls@(_ : _), Just definedNames) ->
-          let -- For each hsig declaration, extract the declared name
-              missing_decls =
-                [ decl
-                | decl <- decls
-                , case extractDeclName decl of
-                    Just name -> not (Set.member name definedNames)
-                    Nothing -> False
-                ]
-           in case missing_decls of
-                [] -> return ()
-                _ ->
-                  dieProgress $
-                    hang
-                      (text "Module" <+> pretty req <+> text "partially implements signature" <+> pretty req `mappend` text ":")
-                      4
-                      ( hang (text "missing declarations from signature:")
-                          4
-                          (vcat (map text missing_decls))
-                      )
-        _ -> return ()
 
     -- NB: do NOT include hidden modules here: GHC 7.10's ghc-pkg
     -- won't allow it (since someone could directly synthesize
@@ -414,7 +381,7 @@ toLinkedComponent
           | (mod_name, Nothing) <- reexports_list
           ]
 
-    let final_linked_shape = ModuleShape provs (Map.keysSet (modScopeRequires linked_shape)) hsig_decls module_defined_names
+    let final_linked_shape = ModuleShape provs (Map.keysSet (modScopeRequires linked_shape)) hsig_decls
 
     -- See Note Note [Signature package special case]
     let (linked_includes, linked_sig_includes)
@@ -489,15 +456,6 @@ extendLinkedComponentMap
   -> LinkedComponentMap
 extendLinkedComponentMap lc m =
   Map.insert (lc_cid lc) (lc_uid lc, lc_shape lc) m
-
--- | Extract the declared name from a single @.hsig@ declaration line.
-extractDeclName :: String -> Maybe String
-extractDeclName line =
-  case words line of
-    (kw : name : _)
-      | kw `elem` ["data", "type", "newtype", "class"] -> Just name
-    (name : "::" : _) -> Just name
-    _ -> Nothing
 
 brokenReexportMsg :: ModuleReexport -> Doc
 brokenReexportMsg (ModuleReexport (Just pn) from _to) =

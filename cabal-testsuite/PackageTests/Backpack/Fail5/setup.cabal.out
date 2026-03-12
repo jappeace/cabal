@@ -1,7 +1,0 @@
-# Setup configure
-Configuring Fail5-0.1.0.0...
-Error:
-    Module PartialSig partially implements signature PartialSig:
-        missing declarations from signature:
-            fun :: A -> A
-    In the stanza executable foo

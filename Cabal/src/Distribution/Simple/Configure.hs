@@ -1255,7 +1255,6 @@ configureComponents
       -- components, which lets us actually build each component.
       let mbWorkDir = flagToMaybe $ configWorkingDir cfg
       hsigDecls <- readHsigDecls mbWorkDir pkg_descr
-      moduleDefinedNames <- readModuleDefinedNames mbWorkDir pkg_descr (Map.keysSet hsigDecls)
       ( buildComponents :: [ComponentLocalBuildInfo]
         , packageDependsIndex :: InstalledPackageIndex
         ) <-
@@ -1274,7 +1273,6 @@ configureComponents
             installedPackageSet
             comp
             hsigDecls
-            moduleDefinedNames
 
       let buildComponentsMap =
             foldl'
@@ -3063,114 +3061,3 @@ extractDeclarations contents =
               && not ("import " `isPrefixOf` stripped)
               && not ("--" `isPrefixOf` stripped)
    in map (dropWhile (== ' ')) (filter isKeepable afterWhere)
-
--- | Read @.hs@ files for modules whose names match known signatures,
--- extracting their defined names.
-readModuleDefinedNames
-  :: Maybe (SymbolicPath CWD (Dir Pkg))
-  -> PackageDescription
-  -> Set.Set ModuleName.ModuleName
-  -> IO (Map.Map ModuleName.ModuleName (Set.Set String))
-readModuleDefinedNames mbWorkDir pkg_descr sigNames = do
-  entries <- concat <$> traverse (readLibDefinedNames mbWorkDir sigNames) (allLibraries pkg_descr)
-  return (Map.fromList entries)
-
-readLibDefinedNames
-  :: Maybe (SymbolicPath CWD (Dir Pkg))
-  -> Set.Set ModuleName.ModuleName
-  -> Library
-  -> IO [(ModuleName.ModuleName, Set.Set String)]
-readLibDefinedNames mbWorkDir sigNames lib = do
-  let srcDirs = hsSourceDirs (libBuildInfo lib)
-      mods = filter (`Set.member` sigNames) (exposedModules lib)
-  catMaybes <$> traverse (findAndReadModule mbWorkDir srcDirs) mods
-
-findAndReadModule
-  :: Maybe (SymbolicPath CWD (Dir Pkg))
-  -> [SymbolicPath Pkg (Dir Source)]
-  -> ModuleName.ModuleName
-  -> IO (Maybe (ModuleName.ModuleName, Set.Set String))
-findAndReadModule mbWorkDir srcDirs modName = do
-  let candidates =
-        [ (dir, ext)
-        | dir <- if null srcDirs then ["."] else map getSymbolicPath srcDirs
-        , ext <- [".hs", ".lhs"]
-        ]
-  go candidates
-  where
-    go [] = return Nothing
-    go ((dir, ext) : rest) = do
-      let relPath = dir ++ "/" ++ ModuleName.toFilePath modName ++ ext
-          fullPath = case mbWorkDir of
-            Nothing -> relPath
-            Just wd -> getSymbolicPath wd ++ "/" ++ relPath
-      exists <- doesFileExist fullPath
-      if exists
-        then do
-          fileContents <- readFile fullPath
-          let names = extractDefinedNames fileContents
-          return (Just (modName, names))
-        else go rest
-
--- | Extract top-level defined names from the contents of a @.hs@ file.
-extractDefinedNames :: String -> Set.Set String
-extractDefinedNames contents =
-  let ls = lines contents
-      (headerLines, bodyLines) = case break (elem "where" . words) ls of
-        (_, []) -> ([], ls)
-        (before, (whereLine : rest)) -> (before ++ [whereLine], rest)
-      headerText = unwords (map (dropWhile (== ' ')) headerLines)
-      exportNames = extractExportListNames headerText
-      isTopLevel l = case l of
-        (c : _) -> c /= ' ' && c /= '\t'
-        [] -> False
-      extractName l =
-        let ws = words l
-         in case ws of
-              (kw : name : _)
-                | kw `elem` ["data", "type", "newtype", "class"] -> Just name
-              (name : "=" : _) -> Just name
-              (name : "::" : _) -> Just name
-              (name@(c : _) : _)
-                | any (== '=') l
-                , isIdentStart c ->
-                    Just name
-              _ -> Nothing
-      isIdentStart c = (c >= 'a' && c <= 'z') || c == '_'
-      defNames = Set.fromList (mapMaybe extractName (filter isTopLevel bodyLines))
-   in Set.union exportNames defNames
-
--- | Extract names from a module export list.
-extractExportListNames :: String -> Set.Set String
-extractExportListNames headerText =
-  case dropWhile (/= '(') headerText of
-    ('(' : rest) ->
-      let exportText = takeBalanced 0 rest
-          items = splitTopLevel exportText
-          extractItem item =
-            case words item of
-              (name : _) ->
-                let cleaned = takeWhile (\c -> c /= '(' && c /= ')') name
-                 in if not (null cleaned)
-                      then Just cleaned
-                      else Nothing
-              [] -> Nothing
-       in Set.fromList (mapMaybe extractItem items)
-    _ -> Set.empty
-
-takeBalanced :: Int -> String -> String
-takeBalanced _ [] = []
-takeBalanced 0 (')' : _) = []
-takeBalanced depth (')' : cs) = ')' : takeBalanced (depth - 1) cs
-takeBalanced depth ('(' : cs) = '(' : takeBalanced (depth + 1) cs
-takeBalanced depth (c : cs) = c : takeBalanced depth cs
-
-splitTopLevel :: String -> [String]
-splitTopLevel = go 0 ""
-  where
-    go :: Int -> String -> String -> [String]
-    go _ acc [] = [reverse acc]
-    go 0 acc (',' : cs) = reverse acc : go 0 "" cs
-    go depth acc ('(' : cs) = go (depth + 1) ('(' : acc) cs
-    go depth acc (')' : cs) = go (max 0 (depth - 1)) (')' : acc) cs
-    go depth acc (c : cs) = go depth (c : acc) cs
