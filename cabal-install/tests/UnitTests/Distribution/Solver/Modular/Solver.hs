@@ -1424,11 +1424,11 @@ dbTH =
       exAv
         "template-haskell"
         1
-        [ExAny "ghc-prim", ExAny "ghc-internal", ExAny "ghc-boot-th", ExAny "pretty", ExAny "base"]
+        [ExAny "ghc-prim", ExAny "ghc-internal", ExAny "ghc-boot-th", ExAny "pretty", ExRange "base" 1 1]
   , Right $ exAv "ghc-prim" 1 []
   , Left $ exInst "ghc-internal" 1 "ghc-internal-1" []
   , Left $ exInst "ghc-boot-th" 1 "ghc-boot-th-1" []
-  , Right $ exAv "pretty" 1 [ExAny "base"]
+  , Right $ exAv "pretty" 1 [ExRange "base" 1 1]
   , Right $ exAv "base" 1 [ExAny "ghc-prim", ExAny "ghc-internal"]
   ]
 
