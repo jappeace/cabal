@@ -40,7 +40,7 @@ import Distribution.Verbosity
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Distribution.Pretty (pretty)
-import Text.PrettyPrint (Doc, hang, hsep, quotes, text, vcat, ($+$), (<+>))
+import Text.PrettyPrint (Doc, hang, hsep, quotes, text, vcat, ($+$))
 
 -- | A linked component is a component that has been mix-in linked, at
 -- which point we have determined how all the dependencies of the
@@ -260,9 +260,9 @@ toLinkedComponent
           4
           (vcat
             [ case Map.lookup req (modScopeRequires linked_shape0) of
-                Just (src : _) ->
+                Just srcs@(_ : _) ->
                   hang (pretty req) 4
-                    (text "brought into scope by" <+> dispModuleSource (getSource src))
+                    (vcat [text "brought into scope by" <+> dispModuleSource (getSource src) | src <- srcs])
                 _ -> pretty req
             | req <- Set.toList reqs
             ])
