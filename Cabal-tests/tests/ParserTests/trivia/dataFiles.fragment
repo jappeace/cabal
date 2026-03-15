@@ -1,0 +1,6 @@
+cabal-version: 1.0
+
+name:   base
+version:           0.0.0
+
+data-files: README.md

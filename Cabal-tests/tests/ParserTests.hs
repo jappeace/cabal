@@ -3,6 +3,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE KindSignatures #-}
 
 module Main
     ( main
@@ -12,6 +13,7 @@ import Prelude ()
 import Prelude.Compat
 import Distribution.Compat.Lens
 
+import Data.Kind
 import Test.Tasty
 import Test.Tasty.Golden.Advanced (goldenTest)
 import Test.Tasty.HUnit
@@ -506,6 +508,11 @@ fieldGrammarFieldGoldenTests = testGroup "fieldgrammar-field-golden" $
           , "packageDescription4.fragment"
           ]
        )
+    ++ [ testGroup "jappie" $ map (fieldGrammarFieldGoldenTest packageDescriptionFieldGrammar)
+          [ "dataFiles.fragment"
+          , "dataFilesMulti.fragment"
+          ]
+       ]
 
 fieldGrammarFieldGoldenTest
   :: forall s a
@@ -555,6 +562,11 @@ fieldGrammarFieldPrettyFieldTests = testGroup "fieldgrammar-field-prettyfield" $
           , "packageDescription4.fragment"
           ]
        )
+     ++ [ testGroup "jappie" $ map (fieldGrammarFieldPrettyFieldTest packageDescriptionFieldGrammar packageDescriptionFieldGrammar)
+          [ "dataFiles.fragment"
+          , "dataFilesMulti.fragment"
+          ]
+       ]
 
 fieldGrammarFieldPrettyFieldTest
   :: forall a
@@ -608,7 +620,18 @@ fieldGrammarFieldExactDocTests = testGroup "fieldgrammar-field-exactdoc" $
           , "packageDescription3.fragment"
           , "packageDescription4.fragment"
           ]
+
        )
+    ++ [ testGroup "jappie" $ map
+          (  fieldGrammarFieldExactDocTest packageDescriptionFieldGrammar packageDescriptionFieldGrammar
+          )
+          [ "dataFiles.fragment"
+          -- , "dataFilesMulti.fragment"
+          -- , "dataFilesMultiExtreme.fragment"
+          ]
+
+       ]
+
 
 fieldGrammarFieldExactDocTest
   :: forall a
@@ -665,6 +688,12 @@ fieldGrammarFieldRoundTripTests = testGroup "fieldgrammar-field-roundtrip" $
           , "packageDescription4.fragment"
           ]
       )
+    ++ [ testGroup "trippin'jappie" $ map (fieldGrammarFieldRoundTripTest packageDescriptionFieldGrammar packageDescriptionFieldGrammar)
+          [ "dataFiles.fragment"
+          -- , "dataFilesMulti.fragment"
+          -- , "dataFilesMultiExtreme.fragment"
+          ]
+       ]
 
 fieldGrammarFieldRoundTripTest
   :: ParsecFieldGrammar' a
