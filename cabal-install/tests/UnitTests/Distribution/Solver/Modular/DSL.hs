@@ -721,7 +721,10 @@ exAvSrcPkg ex =
       _ -> False
 
 mkSimpleVersion :: ExamplePkgVersion -> C.Version
-mkSimpleVersion n = C.mkVersion [n]
+mkSimpleVersion n = if n == 1 then
+   C.mkVersion [n, 0, 0]
+   else
+   C.mkVersion [n]
 
 mkSimplePkgconfigVersion :: ExamplePkgVersion -> C.PkgconfigVersion
 mkSimplePkgconfigVersion = C.versionToPkgconfigVersion . mkSimpleVersion
