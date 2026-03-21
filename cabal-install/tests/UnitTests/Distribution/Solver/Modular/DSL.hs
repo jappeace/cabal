@@ -49,6 +49,7 @@ module UnitTests.Distribution.Solver.Modular.DSL
   , mkVersionRange
   ) where
 
+import GHC.Stack
 import Distribution.Solver.Compat.Prelude
 import Distribution.Utils.Generic
 import Prelude ()
@@ -298,18 +299,18 @@ newtype EnableAllTests = EnableAllTests Bool
 --         provides a number of pre-canned dependency types to look at.
 exAv
   :: ExamplePkgName
-  -> ExamplePkgVersion
+  -> Int
   -> [ExampleDependency]
   -> ExampleAvailable
-exAv n v ds = (exAvNoLibrary n v){exAvDeps = CD.fromLibraryDeps (dependencies ds)}
+exAv n version ds = (exAvNoLibrary n version){exAvDeps = CD.fromLibraryDeps (dependencies ds)}
 
 -- | Constructs an 'ExampleAvailable' package without a default library
 -- component.
-exAvNoLibrary :: ExamplePkgName -> ExamplePkgVersion -> ExampleAvailable
-exAvNoLibrary n v =
+exAvNoLibrary :: ExamplePkgName -> Int -> ExampleAvailable
+exAvNoLibrary n version =
   ExAv
     { exAvName = n
-    , exAvVersion = v
+    , exAvVersion = version -- 1
     , exAvDeps = CD.empty
     , exAvFlags = []
     }
@@ -402,7 +403,7 @@ type DependencyComponent a = C.CondBranch C.ConfVar a
 exDbPkgs :: ExampleDb -> [ExamplePkgName]
 exDbPkgs = map (either exInstName exAvName)
 
-exAvSrcPkg :: ExampleAvailable -> UnresolvedSourcePackage
+exAvSrcPkg :: HasCallStack => ExampleAvailable -> UnresolvedSourcePackage
 exAvSrcPkg ex =
   let pkgId = exAvPkgId ex
 
@@ -553,7 +554,7 @@ exAvSrcPkg ex =
     -- Split the set of dependencies into the set of dependencies of the library,
     -- the dependencies of the test suites and extensions.
     splitTopLevel
-      :: [ExampleDependency]
+      :: HasCallStack => [ExampleDependency]
       -> ( [ExampleDependency]
          , [Extension]
          , Maybe Language
@@ -613,7 +614,7 @@ exAvSrcPkg ex =
     -- any level.
     mkTopLevelCondTree
       :: forall a
-       . (Semigroup a, L.HasBuildInfo a)
+       . (Semigroup a, L.HasBuildInfo a, HasCallStack)
       => a
       -> (C.LibraryVisibility -> C.BuildInfo -> a)
       -> Dependencies
@@ -625,7 +626,7 @@ exAvSrcPkg ex =
 
     -- Convert 'Dependencies' into a tree of a specific component type, using
     -- the given function to generate each component.
-    mkCondTree :: forall a. L.HasBuildInfo a => (C.LibraryVisibility -> C.BuildInfo -> a) -> Dependencies -> DependencyTree a
+    mkCondTree :: forall a. L.HasBuildInfo a => HasCallStack => (C.LibraryVisibility -> C.BuildInfo -> a) -> Dependencies -> DependencyTree a
     mkCondTree mkComponent deps =
       let (libraryDeps, exts, mlang, pcpkgs, buildTools, legacyBuildTools) = splitTopLevel (depsExampleDependencies deps)
           (directDeps, flaggedDeps) = splitDeps libraryDeps
@@ -676,7 +677,7 @@ exAvSrcPkg ex =
     -- 'mkDirect' for example. A flagged dependency is the set of dependencies
     -- guarded by a flag.
     splitDeps
-      :: [ExampleDependency]
+      :: HasCallStack => [ExampleDependency]
       -> ( [(ExamplePkgName, C.LibraryName, C.VersionRange)]
          , [(ExampleFlagName, Dependencies, Dependencies)]
          )
@@ -720,13 +721,13 @@ exAvSrcPkg ex =
       C.MissingUpperBounds{} -> True
       _ -> False
 
-mkSimpleVersion :: ExamplePkgVersion -> C.Version
-mkSimpleVersion n = C.mkVersion [n]
+mkSimpleVersion :: HasCallStack => ExamplePkgVersion -> C.Version
+mkSimpleVersion n = error "where?"
 
-mkSimplePkgconfigVersion :: ExamplePkgVersion -> C.PkgconfigVersion
+mkSimplePkgconfigVersion :: HasCallStack => ExamplePkgVersion -> C.PkgconfigVersion
 mkSimplePkgconfigVersion = C.versionToPkgconfigVersion . mkSimpleVersion
 
-mkVersionRange :: ExamplePkgVersion -> ExamplePkgVersion -> C.VersionRange
+mkVersionRange :: HasCallStack => ExamplePkgVersion -> ExamplePkgVersion -> C.VersionRange
 mkVersionRange v1 v2 =
   C.intersectVersionRanges
     (C.orLaterVersion $ mkSimpleVersion v1)
@@ -775,14 +776,14 @@ exInstPkgId ex =
     , pkgVersion = C.mkVersion [exInstVersion ex, 0, 0]
     }
 
-exAvIdx :: [ExampleAvailable] -> CI.PackageIndex.PackageIndex UnresolvedSourcePackage
+exAvIdx :: HasCallStack => [ExampleAvailable] -> CI.PackageIndex.PackageIndex UnresolvedSourcePackage
 exAvIdx = CI.PackageIndex.fromList . map exAvSrcPkg
 
 exInstIdx :: [ExampleInstalled] -> C.PackageIndex.InstalledPackageIndex
 exInstIdx = C.PackageIndex.fromList . map exInstInfo
 
 exResolve
-  :: ExampleDb
+  :: HasCallStack => ExampleDb
   -- List of extensions supported by the compiler, or Nothing if unknown.
   -> Maybe [Extension]
   -- List of languages supported by the compiler, or Nothing if unknown.
