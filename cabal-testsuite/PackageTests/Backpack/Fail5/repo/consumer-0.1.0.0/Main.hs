@@ -1,3 +1,3 @@
-import Framework (greet)
+import App (appMessage)
 main :: IO ()
-main = putStrLn greet
+main = putStrLn appMessage
