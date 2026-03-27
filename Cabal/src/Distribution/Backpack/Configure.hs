@@ -261,6 +261,9 @@ toComponentLocalBuildInfos
       packageDependsIndex = PackageIndex.fromList (lefts local_graph)
       fullIndex = Graph.fromDistinctList local_graph
 
+    let readyMap :: Map UnitId ReadyComponent
+        readyMap = Map.fromList [(rc_uid rc, rc) | rc <- graph]
+
     case Graph.broken fullIndex of
       [] -> return ()
       -- If there are promised dependencies, we don't know what the dependencies
@@ -270,26 +273,27 @@ toComponentLocalBuildInfos
       broken
         | not (null promisedPkgDeps) -> return ()
         | otherwise ->
-            -- TODO: ppr this
-            dieProgress . text $
-              "The following packages are broken because other"
-                ++ " packages they depend on are missing. These broken "
-                ++ "packages must be rebuilt before they can be used.\n"
-                -- TODO: Undupe.
-                ++ unlines
-                  [ "installed package "
-                    ++ prettyShow (packageId pkg)
-                    ++ " is broken due to missing package "
-                    ++ intercalate ", " (map prettyShow deps)
+            dieProgress $
+              text "The following packages are broken because other"
+                <+> text "packages they depend on are missing. These broken"
+                <+> text "packages must be rebuilt before they can be used."
+                $$ nest 2 (vcat $
+                  [ hang (text "installed package" <+> pretty (packageId pkg)) 4
+                      (text "is broken due to missing package"
+                        <+> hsep (punctuate comma (map pretty deps)))
                   | (Left pkg, deps) <- broken
                   ]
-                ++ unlines
-                  [ "planned package "
-                    ++ prettyShow (packageId pkg)
-                    ++ " is broken due to missing package "
-                    ++ intercalate ", " (map prettyShow deps)
+                  ++
+                  [ hang (text "planned package" <+> pretty (packageId pkg)) 4
+                      (vcat $
+                        text "is broken due to missing package"
+                        : [ nest 2 (dispMissingDep readyMap dep)
+                          | dep <- deps
+                          ]
+                        ++ [nest 2 $ text "To fix: rebuild these packages together"
+                              <+> text "so cabal can create the required instantiation."])
                   | (Right pkg, deps) <- broken
-                  ]
+                  ])
 
     -- In this section, we'd like to look at the 'packageDependsIndex'
     -- and see if we've picked multiple versions of the same
@@ -337,6 +341,25 @@ toComponentLocalBuildInfos
     let clbis = mkLinkedComponentsLocalBuildInfo comp graph
     -- forM clbis $ \(clbi,deps) -> info verbosity $ "UNIT" ++ hashUnitId (componentUnitId clbi) ++ "\n" ++ intercalate "\n" (map hashUnitId deps)
     return (clbis, packageDependsIndex)
+
+-- | Pretty-print a missing dependency, resolving opaque hashed 'UnitId's
+-- to their human-readable 'OpenUnitId' (with instantiation info) when possible.
+dispMissingDep :: Map UnitId ReadyComponent -> UnitId -> Doc
+dispMissingDep readyMap uid =
+  case Map.lookup uid readyMap of
+    Just rc -> case rc_i rc of
+      Right instc
+        | let insts = instc_insts instc
+        , not (null insts) ->
+            pretty (rc_open_uid rc)
+              $$ nest 2 (text "(requires instantiation:"
+                <+> hsep (punctuate comma
+                  [ pretty mn <<>> text "=" <<>> pretty m
+                  | (mn, m) <- insts
+                  ])
+                <<>> text ")")
+      _ -> pretty (rc_open_uid rc)
+    Nothing -> pretty uid  -- fallback: just show the hash
 
 -- Build ComponentLocalBuildInfo for each component we are going
 -- to build.
