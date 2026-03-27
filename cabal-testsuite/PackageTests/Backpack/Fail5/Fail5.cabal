@@ -3,18 +3,11 @@ name:          Fail5
 version:       0.1.0.0
 build-type:    Simple
 
-library framework-utils
-  exposed-modules:  Utils
-  hs-source-dirs:   repo/framework-0.1.0.0/src-utils
-  build-depends:    base
-  default-language: Haskell2010
-  visibility:       public
-
 library framework
   signatures:       App
   exposed-modules:  Framework
   hs-source-dirs:   repo/framework-0.1.0.0/src repo/framework-0.1.0.0/src-sig
-  build-depends:    base, Fail5:framework-utils
+  build-depends:    base
   default-language: Haskell2010
   visibility:       public
 
@@ -27,6 +20,6 @@ library app-impl
 
 executable consumer
   main-is:          Main.hs
-  build-depends:    base, Fail5:framework, Fail5:framework-utils, Fail5:app-impl
+  build-depends:    base, Fail5:framework, Fail5:app-impl
   hs-source-dirs:   repo/consumer-0.1.0.0
   default-language: Haskell2010

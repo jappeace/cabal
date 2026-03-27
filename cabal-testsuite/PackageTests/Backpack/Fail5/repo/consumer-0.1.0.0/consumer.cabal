@@ -5,5 +5,5 @@ build-type:    Simple
 
 executable consumer
   main-is:          Main.hs
-  build-depends:    base, framework, framework:framework-utils, app-impl
+  build-depends:    base, framework, app-impl
   default-language: Haskell2010
