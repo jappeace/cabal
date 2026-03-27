@@ -31,6 +31,7 @@ import qualified Distribution.Compat.Graph as Graph
 import Distribution.InstalledPackageInfo
   ( InstalledPackageInfo
   , emptyInstalledPackageInfo
+  , requiredSignatures
   )
 import qualified Distribution.InstalledPackageInfo as Installed
 import Distribution.ModuleName
@@ -264,6 +265,17 @@ toComponentLocalBuildInfos
     let readyMap :: Map UnitId ReadyComponent
         readyMap = Map.fromList [(rc_uid rc, rc) | rc <- graph]
 
+        -- Map from dependency UnitId to its PackageId, built from includes
+        -- of all ready components.  Used to resolve opaque hashed UnitIds
+        -- in broken-package error messages.
+        depPkgMap :: Map UnitId PackageId
+        depPkgMap = Map.fromList
+          [ (unDefUnitId (ci_id ci), ci_pkgid ci)
+          | rc <- graph
+          , Right instc <- [rc_i rc]
+          , ci <- instc_includes instc
+          ]
+
     case Graph.broken fullIndex of
       [] -> return ()
       -- If there are promised dependencies, we don't know what the dependencies
@@ -287,11 +299,9 @@ toComponentLocalBuildInfos
                   [ hang (text "planned package" <+> pretty (packageId pkg)) 4
                       (vcat $
                         text "is broken due to missing package"
-                        : [ nest 2 (dispMissingDep readyMap dep)
+                        : [ nest 2 (dispMissingDep installedPackageSet readyMap depPkgMap dep)
                           | dep <- deps
-                          ]
-                        ++ [nest 2 $ text "To fix: rebuild these packages together"
-                              <+> text "so cabal can create the required instantiation."])
+                          ])
                   | (Right pkg, deps) <- broken
                   ])
 
@@ -343,23 +353,40 @@ toComponentLocalBuildInfos
     return (clbis, packageDependsIndex)
 
 -- | Pretty-print a missing dependency, resolving opaque hashed 'UnitId's
--- to their human-readable 'OpenUnitId' (with instantiation info) when possible.
-dispMissingDep :: Map UnitId ReadyComponent -> UnitId -> Doc
-dispMissingDep readyMap uid =
+-- to their human-readable package id and signature info when possible.
+--
+-- When an indefinite Backpack package is installed separately (e.g. via
+-- nix callCabal2nix), only the indefinite variant (with unfilled signatures)
+-- exists in the package DB.  The consumer needs an instantiated variant
+-- which was never built.  The fix is to add both packages to the same
+-- cabal project so cabal can fill the signatures.
+dispMissingDep
+  :: InstalledPackageIndex  -- ^ all installed packages
+  -> Map UnitId ReadyComponent  -- ^ planned ready components
+  -> Map UnitId PackageId  -- ^ dep UnitId to its PackageId (from includes)
+  -> UnitId  -- ^ the missing dependency
+  -> Doc
+dispMissingDep installedPkgSet readyMap depPkgMap uid =
   case Map.lookup uid readyMap of
-    Just rc -> case rc_i rc of
-      Right instc
-        | let insts = instc_insts instc
-        , not (null insts) ->
-            pretty (rc_open_uid rc)
-              $$ nest 2 (text "(requires instantiation:"
-                <+> hsep (punctuate comma
-                  [ pretty mn <<>> text "=" <<>> pretty m
-                  | (mn, m) <- insts
-                  ])
-                <<>> text ")")
-      _ -> pretty (rc_open_uid rc)
-    Nothing -> pretty uid  -- fallback: just show the hash
+    Just rc -> pretty (rc_open_uid rc)
+    Nothing -> case Map.lookup uid depPkgMap of
+      Just pkgid ->
+        let ipiSigs = [ sigs
+                       | ipi <- PackageIndex.lookupSourcePackageId installedPkgSet pkgid
+                       , let sigs = requiredSignatures ipi
+                       , not (Set.null sigs)
+                       ]
+        in case ipiSigs of
+          (sigs : _) ->
+            pretty pkgid
+              <+> parens (text "has unfilled"
+                <+> (if Set.size sigs > 1 then text "signatures:" else text "signature:")
+                <+> hsep (punctuate comma (map pretty (Set.toList sigs))))
+              $$ nest 2 (text "The package is installed as indefinite."
+                $$ text "To use it, rebuild it in the same cabal project as the"
+                <+> text "consumer so cabal can fill the signatures.")
+          [] -> pretty pkgid <+> parens (pretty uid)
+      Nothing -> pretty uid
 
 -- Build ComponentLocalBuildInfo for each component we are going
 -- to build.

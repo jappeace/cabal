@@ -17,14 +17,13 @@ main = setupAndCabalTest $ do
         -- 1. Which package is broken
         assertOutputContains "consumer" r
         -- 2. Which signature needs filling
+        assertOutputContains "unfilled" r
         assertOutputContains "App" r
-        -- 3. That the indefinite package exists but the required
-        --    instantiation was not built — the user installed
-        --    framework separately, so only the indefinite version
-        --    (App=<App>) is in the package db.  The instantiated
-        --    variant (App=app-impl:App) doesn't exist.
-        assertOutputContains "instantiat" r
-        -- 4. Actionable guidance: rebuild framework together with
-        --    the consumer so cabal can create the instantiation.
+        -- 3. That the package is installed as indefinite (signatures
+        --    not filled) — the user installed framework separately,
+        --    so only the indefinite version exists in the package db.
+        assertOutputContains "indefinite" r
+        -- 4. Actionable guidance: rebuild in the same cabal project
+        --    so cabal can fill the signatures.
         assertOutputContains "rebuild" r
         return ()
